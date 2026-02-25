@@ -20,7 +20,7 @@
 
 ### 1. Предварительные требования
 
-- установлен Docker и Docker Compose;
+- установлен Docker;
 - порт `8501` свободен (используется Streamlit‑дашбордом);
 - достаточно RAM/диска для запуска двух брокеров Kafka и модели DistilBERT
 
@@ -29,7 +29,7 @@
 В корне репозитория `C:\amazon-reviews-kafka-lab` выполнить:
 
 ```bash
-docker-compose up --build
+docker compose up -d --build
 ```
 
 После успешного старта:
@@ -40,7 +40,7 @@ docker-compose up --build
 Остановка:
 
 ```bash
-docker-compose down
+docker compose down -v 
 ```
 
 ---

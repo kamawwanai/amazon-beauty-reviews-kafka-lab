@@ -1,0 +1,154 @@
+services:
+
+  # БРОКЕРЫ
+  kafka-broker-1:
+    image: bitnamilegacy/kafka:latest
+    container_name: kafka-broker-1
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-broker-1:9093,2@kafka-broker-2:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-broker-1:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_KRAFT_CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - kafka-net
+    ports:
+      - "9092:9092"
+
+  kafka-broker-2:
+    image: bitnamilegacy/kafka:latest
+    container_name: kafka-broker-2
+    environment:
+      - KAFKA_CFG_NODE_ID=2
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka-broker-1:9093,2@kafka-broker-2:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-broker-2:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_KRAFT_CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - kafka-net
+    ports:
+      - "9094:9092"
+
+  # ТОПИКИ 
+  # replica-assignment формат: leader:follower для каждой партиции
+  #
+  #  raw-data:           1:2, 1:2  → лидер Broker1, реплика Broker2
+  #  processed-data:     2:1, 2:1  → лидер Broker2, реплика Broker1
+  #  visualization-data: 1:2, 1:2  → лидер Broker1, реплика Broker2
+  #  ml-results:         1:2, 1:2  → лидер Broker1 (feedback loop)
+  topic-init:
+    image: bitnamilegacy/kafka:latest
+    container_name: topic-init
+    depends_on:
+      - kafka-broker-1
+      - kafka-broker-2
+    networks:
+      - kafka-net
+    volumes:
+      - ./scripts/init-topics.sh:/init-topics.sh
+    entrypoint: ["/bin/bash", "/init-topics.sh"]
+
+  # КОНСЬЮМЕРЫ
+
+  # ПРОДЬЮСЕРЫ (генераторы raw-data из parquet)
+  producer-1:
+    build: ./backend
+    container_name: producer-1
+    command: python producers/data_producer_1.py
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    networks:
+      - kafka-net
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+      - PARQUET_PATH=/app/data/all_beauty_raw.parquet
+    volumes:
+      - ./data:/app/data:ro
+    restart: unless-stopped
+
+  producer-2:
+    build: ./backend
+    container_name: producer-2
+    command: python producers/data_producer_2.py
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    networks:
+      - kafka-net
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+      - PARQUET_PATH=/app/data/all_beauty_raw.parquet
+    volumes:
+      - ./data:/app/data:ro
+    restart: unless-stopped
+
+  # Broker 1 → DataProcessorConsumer → processed-data → Broker 2
+  data-processor:
+    build: ./backend
+    container_name: data-processor
+    command: python consumers/data_processor_consumer.py
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    networks:
+      - kafka-net
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+
+  # Broker 1 → VisualizationConsumer → visualization-data
+  visualization-consumer:
+    build: ./backend
+    container_name: visualization-consumer
+    command: python consumers/visualization_consumer.py
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    networks:
+      - kafka-net
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+
+  # Broker 2 → MLConsumer → ml-results → Broker 1 (feedback loop)
+  ml-consumer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.ml
+    container_name: ml-consumer
+    command: python consumers/ml_consumer.py
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    networks:
+      - kafka-net
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+      - MODEL_PATH=/app/model/sentiment_distilbert
+    volumes:
+      - ./model:/app/model
+
+  # ДАШБОРД
+  dashboard:
+    build: ./frontend
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - ml-consumer
+      - visualization-consumer
+    networks:
+      - kafka-net
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+
+networks:
+  kafka-net:
+    driver: bridge

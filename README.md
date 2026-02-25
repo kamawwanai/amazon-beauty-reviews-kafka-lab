@@ -56,6 +56,59 @@ Kafka‑стек и приложения поднимаются через `dock
 - несколько **producers** и **consumers**, а также отдельный **ML‑consumer** на базе `Dockerfile.ml`;
 - **Streamlit‑дашборд** `dashboard`, подключающийся к Kafka и отображающий online‑метрики
 
+```mermaid
+flowchart LR
+    subgraph DataSources[Источники данных]
+        P1[Producer 1 parquet -> raw-data]
+        P2[Producer 2 parquet -> raw-data]
+    end
+
+    subgraph KafkaCluster[Kafka кластер]
+        B1[(Broker 1)]
+        B2[(Broker 2)]
+
+        subgraph Topics[Kafka топики]
+            Traw[raw-data]
+            Tproc[processed-data]
+            Tvis[visualization-data]
+            Tml[ml-results]
+        end
+    end
+
+    subgraph Backend[Backend consumers]
+        DP[Data Processor consumer -> producer]
+        VIS[Visualization Consumer]
+        ML[ML Consumer DistilBERT + аспекты]
+    end
+
+    subgraph Frontend[Streamlit дашборд]
+        DASH[Dashboard online метрики и алерты]
+    end
+
+    %% Producers → raw-data
+    P1 --> Traw
+    P2 --> Traw
+
+    %% raw-data → processed-data
+    Traw --> DP
+    DP --> Tproc
+
+    %% raw-data → visualization-data
+    Traw --> VIS
+    VIS --> Tvis
+
+    %% processed-data → ml-results
+    Tproc --> ML
+    ML --> Tml
+
+    %% feedback loop из ML‑результатов
+    Tml -. алерты/сводки .- DASH
+
+    %% Dashboard читает агрегации и результаты модели
+    Tvis --> DASH
+    Tml --> DASH
+```
+
 ---
 
 ## ML / DL: идея и препроцессинг

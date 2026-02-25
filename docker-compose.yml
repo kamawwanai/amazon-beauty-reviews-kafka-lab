@@ -148,6 +148,8 @@ services:
       - kafka-net
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+    volumes:
+      - ./photos:/app/photos:ro
 
 networks:
   kafka-net:

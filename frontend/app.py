@@ -392,6 +392,13 @@ if ml_data:
                 top_pos[["asin", "reviews", "avg_confidence"]],
                 use_container_width=True,
             )
+            pos_img_path = "photos/invest_in_good.jpg"
+            if os.path.exists(pos_img_path):
+                st.image(
+                    pos_img_path,
+                    caption="Invest in good products",
+                    use_column_width=True,
+                )
         else:
             st.info("Пока нет позитивных предсказаний.")
 
@@ -414,6 +421,13 @@ if ml_data:
                 top_neg[["asin", "reviews", "avg_confidence"]],
                 use_container_width=True,
             )
+            neg_img_path = "photos/invest_in_bad.jpg"
+            if os.path.exists(neg_img_path):
+                st.image(
+                    neg_img_path,
+                    caption="Invest in problem products",
+                    use_column_width=True,
+                )
         else:
             st.info("Пока нет негативных предсказаний.")
 

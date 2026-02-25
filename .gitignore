@@ -122,11 +122,6 @@ Thumbs.db
 # Logs
 *.log
 
-# Data  
-data/
-
-model/sentiment_distilbert/model.safetensors
-
 # Temporary files
 *.tmp
 *.temp
